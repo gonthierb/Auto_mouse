@@ -1,77 +1,64 @@
 import time
 import random
-import argparse
 import pyautogui
 
-pyautogui.FAILSAFE = True  # déplace la souris en haut-gauche pour arrêter
+# Configuration — modifie ici
+INTERVAL = 5.0        # secondes entre actions
+MOVE_RANGE = 50       # px amplitude des petits mouvements
+CLICK_PROB = 0.02     # probabilité de clic par cycle (0-1)
+JITTER = True         # True pour durée non nulle des mouvements
+SAFE_CLICK = False    # True pour utiliser safe_click
+SAFE_X = None         # X pour clic sûr (None -> centre écran)
+SAFE_Y = None         # Y pour clic sûr (None -> centre écran)
+DEBUG = False         # True pour afficher chaque action
 
-# ...existing code...
-# ajout : tentative d'import des modules Windows pour cliquer sur le "Desktop"
-try:
-    import win32gui
-    import win32api
-    import win32con
-    WIN32_AVAILABLE = True
-except Exception:
-    WIN32_AVAILABLE = False
+pyautogui.FAILSAFE = True  # déplacer la souris en haut-gauche arrête le script
 
 def safe_click(safe_x=None, safe_y=None):
-    """
-    Effectue un clic sur le fond de bureau si possible (pywin32),
-    sinon sur des coordonnées sûres (si fournies) ou le centre de l'écran.
-    Restaure ensuite la position de la souris.
-    """
+    """Clique sur des coordonnées sûres (ou centre écran) puis restaure la position."""
     orig = pyautogui.position()
     try:
-        if WIN32_AVAILABLE:
-            # handle Progman (Desktop)
-            progman = win32gui.FindWindow("Progman", None)
-            if progman:
-                # client rect donne largeur/hauteur
-                left, top, right, bottom = win32gui.GetClientRect(progman)
-                w = right - left
-                h = bottom - top
-                cx = (safe_x if safe_x is not None else w // 2)
-                cy = (safe_y if safe_y is not None else h // 2)
-                # clamp
-                cx = max(0, min(cx, w - 1))
-                cy = max(0, min(cy, h - 1))
-                # convertir coords client -> écran
-                sx, sy = win32gui.ClientToScreen(progman, (cx, cy))
-                win32api.SetCursorPos((sx, sy))
-                # cliquer sur la fenêtre Desktop
-                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0)
-                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0)
-                return
-        # fallback si pas de pywin32 ou progman introuvable
         screen_w, screen_h = pyautogui.size()
         tx = safe_x if safe_x is not None else screen_w // 2
         ty = safe_y if safe_y is not None else screen_h // 2
         tx = max(0, min(tx, screen_w - 1))
         ty = max(0, min(ty, screen_h - 1))
-        pyautogui.moveTo(tx, ty)
+        pyautogui.moveTo(tx, ty, duration=0.08)
         pyautogui.click()
     finally:
-        pyautogui.moveTo(orig)  # revenir à la position initiale
+        try:
+            # pyautogui.Point a des attributs x,y
+            pyautogui.moveTo(orig.x, orig.y, duration=0.05)
+        except Exception:
+            # fallback si orig est une tuple
+            pyautogui.moveTo(orig, duration=0.05)
 
-def run(interval, move_range, click_prob, jitter, use_safe_click, safe_x, safe_y):
+def run(interval=INTERVAL, move_range=MOVE_RANGE, click_prob=CLICK_PROB,
+        jitter=JITTER, use_safe_click=SAFE_CLICK, safe_x=SAFE_X, safe_y=SAFE_Y,
+        debug=DEBUG):
+    print(f"Auto mouse démarré — interval={interval}s move_range={move_range}px click_prob={click_prob}")
     try:
         while True:
-            # petit mouvement aléatoire relatif
             dx = random.randint(-move_range, move_range)
             dy = random.randint(-move_range, move_range)
-            dur = random.uniform(0.05, 0.4) if jitter else 0
+            dur = random.uniform(0.08, 0.30) if jitter else 0.02
             pyautogui.moveRel(dx, dy, duration=dur)
+            if debug:
+                print(f"moved rel ({dx},{dy}) dur={dur:.2f}")
 
-            # clic occasionnel
             if random.random() < click_prob:
                 if use_safe_click:
                     safe_click(safe_x, safe_y)
+                    if debug:
+                        print("safe click")
                 else:
                     pyautogui.click()
+                    if debug:
+                        print("click")
 
-            # attente légèrement aléatoire pour paraître humain
             wait = random.uniform(interval * 0.85, interval * 1.15)
+            if debug:
+                print(f"sleep {wait:.2f}s")
             time.sleep(wait)
     except KeyboardInterrupt:
         print("Arrêt demandé par l'utilisateur.")
@@ -79,14 +66,4 @@ def run(interval, move_range, click_prob, jitter, use_safe_click, safe_x, safe_y
         print("Fail-safe déclenché : script arrêté (souris en coin).")
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser(description="Auto mouse mover")
-    p.add_argument("--interval", type=float, default=30.0, help="Intervalle moyen en secondes entre actions")
-    p.add_argument("--move-range", type=int, default=10, help="Amplitude (px) des petits mouvements")
-    p.add_argument("--click-prob", type=float, default=0.05, help="Probabilité de clic à chaque cycle (0-1)")
-    p.add_argument("--jitter", action="store_true", help="Ajouter durée aux mouvements pour les rendre plus humains")
-    p.add_argument("--safe-click", action="store_true", help="Faire les clics dans un espace 'sûr' du bureau")
-    p.add_argument("--safe-x", type=int, default=None, help="Coordonnée X (client desktop ou écran) pour clic sûr")
-    p.add_argument("--safe-y", type=int, default=None, help="Coordonnée Y (client desktop ou écran) pour clic sûr")
-    args = p.parse_args()
-
-    run(args.interval, args.move_range, args.click_prob, args.jitter, args.safe_click, args.safe_x, args.safe_y)
+    run()
